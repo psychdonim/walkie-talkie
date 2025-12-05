@@ -23,6 +23,10 @@ func NewWalkieTalkie(listenAddr net.Addr) *WalkieTalkie {
 	}
 }
 
+func (wt *WalkieTalkie) ChunksDrain() <-chan []byte {
+	return wt.chunksChannel
+}
+
 func (wt *WalkieTalkie) Listen() error {
 	listener, err := net.Listen(wt.listenAddr.Network(), wt.listenAddr.String())
 	if err != nil {
