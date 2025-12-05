@@ -9,7 +9,7 @@ import (
 const oneMessageBorder = 1 << 20 // 1 MB
 const chunkSize = 1<<16 - 1
 
-type WTCallbackChunk func([]byte)
+type WTChunksListener func(<-chan []byte)
 
 type WalkieTalkie struct {
 	listenAddr net.Addr
@@ -21,7 +21,7 @@ func NewWalkieTalkie(listenAddr net.Addr) *WalkieTalkie {
 	}
 }
 
-func (wt *WalkieTalkie) ListenWithCallback(callback WTCallbackChunk) error {
+func (wt *WalkieTalkie) ListenWithCallback(callback WTChunksListener) error {
 	listener, err := net.Listen(wt.listenAddr.Network(), wt.listenAddr.String())
 	if err != nil {
 		return err
@@ -33,11 +33,14 @@ func (wt *WalkieTalkie) ListenWithCallback(callback WTCallbackChunk) error {
 		if err != nil {
 			return err
 		}
-		go wt.ListenFrames(conn, callback)
+
+		chunksDrain := make(chan []byte, 4)
+		go callback(chunksDrain)
+		go wt.ListenFrames(conn, chunksDrain)
 	}
 }
 
-func (wt *WalkieTalkie) ListenFrames(conn net.Conn, callback WTCallbackChunk) {
+func (wt *WalkieTalkie) ListenFrames(conn net.Conn, chunksDrain chan<- []byte) {
 	defer conn.Close()
 
 	header := make([]byte, 8)
@@ -54,9 +57,11 @@ func (wt *WalkieTalkie) ListenFrames(conn net.Conn, callback WTCallbackChunk) {
 			return
 		}
 
-		callback(chunk[:n])
+		chunksDrain <- chunk[:n]
 		offset += uint64(n)
 	}
+
+	close(chunksDrain)
 }
 
 func (wt *WalkieTalkie) Send(messageReader io.Reader, messageLength uint64) error {
