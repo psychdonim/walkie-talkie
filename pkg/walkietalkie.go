@@ -9,7 +9,7 @@ import (
 const oneMessageBorder = 1 << 20 // 1 MB
 const chunkSize = 1<<16 - 1
 
-type WTChunksListener func(<-chan []byte)
+type WTChunksListener func(<-chan []byte, io.Writer)
 
 type WalkieTalkie struct {
 	listenAddr net.Addr
@@ -35,13 +35,14 @@ func (wt *WalkieTalkie) ListenWithCallback(callback WTChunksListener) error {
 		}
 
 		chunksDrain := make(chan []byte, 4)
-		go callback(chunksDrain)
+		go callback(chunksDrain, conn)
 		go wt.ListenFrames(conn, chunksDrain)
 	}
 }
 
 func (wt *WalkieTalkie) ListenFrames(conn net.Conn, chunksDrain chan<- []byte) {
 	defer conn.Close()
+	defer close(chunksDrain)
 
 	header := make([]byte, 8)
 	if _, err := io.ReadFull(conn, header); err != nil {
@@ -60,8 +61,6 @@ func (wt *WalkieTalkie) ListenFrames(conn net.Conn, chunksDrain chan<- []byte) {
 		chunksDrain <- chunk[:n]
 		offset += uint64(n)
 	}
-
-	close(chunksDrain)
 }
 
 func (wt *WalkieTalkie) Send(messageReader io.Reader, messageLength uint64) error {
